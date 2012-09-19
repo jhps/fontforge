@@ -89,6 +89,7 @@ void chunktest(void) {
 }
 #endif
 
+#ifdef USE_OUR_MEMORY
 void *chunkalloc(int size) {
 # if ALLOC_CHUNK<=1
 return( gcalloc(1,size));
@@ -171,6 +172,7 @@ return;
 # endif
 }
 #endif
+#endif /* USE_OUR_MEMORY */
 
 char *strconcat(const char *str1,const char *str2) {
     int len1 = strlen(str1);
@@ -6438,7 +6440,8 @@ void BaseScriptFree(struct basescript *bs) {
 
     while ( bs!=NULL ) {
 	next = bs->next;
-	free(bs->baseline_pos);
+	if ( bs->baseline_pos )
+	    free(bs->baseline_pos);
 	BaseLangFree(bs->langs);
 	chunkfree(bs,sizeof(struct basescript));
 	bs = next;
