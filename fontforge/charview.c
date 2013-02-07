@@ -145,6 +145,7 @@ static Color anchoredoutlinecol = 0x0040ff;
 static Color templateoutlinecol = 0x009800;
 static Color oldoutlinecol = 0x008000;
 static Color transformorigincol = 0x000000;
+static Color inactivetransformorigincol = 0x00ff00;
 static Color guideoutlinecol = 0x808080;
 static Color gridfitoutlinecol = 0x009800;
 static Color backoutlinecol = 0x009800;
@@ -1921,10 +1922,29 @@ return;
 }
 
 static void DrawTransOrigin(CharView *cv, GWindow pixmap) {
-    int x = rint(cv->p.cx*cv->scale) + cv->xoff, y = cv->height-cv->yoff-rint(cv->p.cy*cv->scale);
+    if ( !cv->b.sc->parent->pivotPointActive ) {
+	int x = rint(cv->p.cx*cv->scale) + cv->xoff, y = cv->height-cv->yoff-rint(cv->p.cy*cv->scale);
+	GDrawDrawLine(pixmap,x-4,y,x+4,y,transformorigincol);
+	GDrawDrawLine(pixmap,x,y-4,x,y+4,transformorigincol);
+    }
+}
 
-    GDrawDrawLine(pixmap,x-4,y,x+4,y,transformorigincol);
-    GDrawDrawLine(pixmap,x,y-4,x,y+4,transformorigincol);
+static void DrawPivot(CharView *cv, GWindow pixmap) {
+    if ( cv->b.sc->parent->pivotPointSet ) {
+	int x = rint(cv->b.sc->parent->pivotPoint.x*cv->scale) + cv->xoff;
+	int y = cv->height-cv->yoff-rint(cv->b.sc->parent->pivotPoint.y*cv->scale);
+	GRect r;
+	Color c = cv->b.sc->parent->pivotPointActive ? transformorigincol : inactivetransformorigincol;
+
+	r.x = x-5;
+	r.y = y-5;
+	r.width = 11;
+	r.height = 11;
+
+	GDrawDrawLine(pixmap,x-4,y,x+4,y,c);
+	GDrawDrawLine(pixmap,x,y-4,x,y+4,c);
+	GDrawDrawElipse(pixmap,&r,c);
+    }
 }
 
 static void DrawVLine(CharView *cv,GWindow pixmap,real pos,Color fg, int flags,
@@ -2587,6 +2607,7 @@ static void CVExpose(CharView *cv, GWindow pixmap, GEvent *event ) {
 	    (cv->showvmetrics || cv->showhmetrics))
 	CVSideBearings(pixmap,cv);
 
+    DrawPivot(cv,pixmap);
     if ((( cv->active_tool >= cvt_scale && cv->active_tool <= cvt_perspective ) ||
 		cv->active_shape!=NULL ) &&
 	    cv->p.pressed )
@@ -3981,6 +4002,12 @@ return;
       break;
       case cvt_rotate: case cvt_flip: case cvt_scale: case cvt_skew:
       case cvt_3d_rotate: case cvt_perspective:
+	if ( event->u.mouse.state&ksm_alt ) {
+	    cv->b.sc->parent->pivotPoint = cv->info;
+	    cv->b.sc->parent->pivotPointSet = true;
+	    cv->b.sc->parent->pivotPointActive = true;
+	    FVRedrawAllCharViews(cv->b.sc->parent);
+	}
 	CVMouseDownTransform(cv);
       break;
       case cvt_knife:
@@ -6370,6 +6397,7 @@ return;
 
     CVPaletteActivate(cv);
     CVToolsSetCursor(cv,TrueCharState(event),NULL);
+
 	/* The window check is to prevent infinite loops since DVChar can */
 	/*  call CVChar too */
     if ( cv->dv!=NULL && (event->w==cv->gw || event->w==cv->v) && DVChar(cv->dv,event))
@@ -6417,6 +6445,28 @@ return;
 	    _CVMenuScale(cv, MID_ZoomOut);
     } else if ( (event->u.chr.state&ksm_control) && (event->u.chr.keysym=='=' || event->u.chr.keysym==0xffab/*XK_KP_Add*/) ){
 	    _CVMenuScale(cv, MID_ZoomIn);
+    } else if ( (event->u.chr.state&ksm_control) && (event->u.chr.keysym==XK_Delete || event->u.chr.keysym==XK_KP_Delete) ) {
+	cv->b.sc->parent->pivotPointSet = 0;
+	cv->b.sc->parent->pivotPointActive = 0;
+	FVRedrawAllCharViews(cv->b.sc->parent);
+    } else if ( (event->u.chr.state&ksm_control) && (event->u.chr.keysym==XK_End || event->u.chr.keysym==XK_KP_End) ) {
+	if ( cv->b.sc->parent->pivotPointSet ) {
+	    cv->b.sc->parent->pivotPointActive = 0;
+	    FVRedrawAllCharViews(cv->b.sc->parent);
+	}
+    } else if ( (event->u.chr.state&ksm_control) && (event->u.chr.keysym==XK_Insert || event->u.chr.keysym==XK_KP_Insert)  ) {
+	int needredraw = 0;
+	if ( !cv->b.sc->parent->pivotPointSet ) {	/* Should we allow this? For now in case ALT is used by something else */
+	    cv->b.sc->parent->pivotPointSet = 1;
+	    cv->b.sc->parent->pivotPoint = cv->info;
+	    needredraw = 1;
+	}
+	if ( cv->b.sc->parent->pivotPointSet ) {
+	    cv->b.sc->parent->pivotPointActive = 1;
+	    needredraw = 1;
+	}
+	if (needredraw)
+	    FVRedrawAllCharViews(cv->b.sc->parent);
     } else if ( event->u.chr.keysym == GK_Left ||
 	    event->u.chr.keysym == GK_Up ||
 	    event->u.chr.keysym == GK_Right ||
@@ -6473,6 +6523,10 @@ return;
 		    SCSynchronizeWidth(cv->b.sc,cv->b.sc->width,cv->b.sc->width-dx,NULL);
 		_CV_CharChangedUpdate(cv,2);
 		CVInfoDraw(cv,cv->gw);
+	    } else if ( cv->b.sc->parent->pivotPointSet ) {
+		cv->b.sc->parent->pivotPoint.x += dx;
+		cv->b.sc->parent->pivotPoint.y += dy;
+		FVRedrawAllCharViews(cv->b.sc->parent);
 	    }
 	}
     } else if ( event->u.chr.keysym == GK_Page_Up ||
@@ -7824,6 +7878,11 @@ static int getorigin(void *d,BasePoint *base,int index) {
 	base->y = cv->p.cy;
 	/* I don't have any way of telling if a press has happened. if one */
 	/*  hasn't they'll just get a 0,0 origin. oh well */
+      break;
+      case 3:		/* pivot point */
+	if (! cv->b.sc->parent->pivotPointSet)
+return( false );
+	*base = cv->b.sc->parent->pivotPoint;
       break;
       default:
 return( false );

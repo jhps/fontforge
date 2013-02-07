@@ -31,28 +31,29 @@ void CVMouseDownTransform(CharView *cv) {
     CVPreserveTState(cv);
 }
 
-void CVMouseMoveTransform(CharView *cv) {
+static void CVTransform(CharView *cv,const BasePoint centerPoint) {
     real transform[6];
 
     CVRestoreTOriginalState(cv);
-    if ( cv->info.x != cv->p.cx || cv->info.y != cv->p.cy ) {
+    if ( cv->info.x != centerPoint.x || cv->info.y != centerPoint.y ) {
 	transform[0] = transform[3] = 1;
 	transform[1] = transform[2] = 0;
 	switch ( cv->active_tool ) {
 	  case cvt_rotate: {
-	    real angle = atan2(cv->info.y-cv->p.cy,cv->info.x-cv->p.cx);
+	    real angle = atan2(cv->info.y-centerPoint.y,cv->info.x-centerPoint.x);
+
 	    transform[0] = transform[3] = cos(angle);
 	    transform[2] = -(transform[1] = sin(angle));
 	  } break;
 	  case cvt_flip: {
 	    real dx,dy;
-	    if (( dx = cv->info.x-cv->p.cx)<0 ) dx=-dx;
-	    if (( dy = cv->info.y-cv->p.cy)<0 ) dy=-dy;
+	    if (( dx = cv->info.x-centerPoint.x)<0 ) dx=-dx;
+	    if (( dy = cv->info.y-centerPoint.y)<0 ) dy=-dy;
 	    if ( dy>2*dx )
 		transform[0] = -1;
 	    else if ( dx>2*dy )
 		transform[3] = -1;
-	    else if ( (cv->info.x-cv->p.cx)*(cv->info.y-cv->p.cy)>0 ) {
+	    else if ( (cv->info.x-centerPoint.x)*(cv->info.y-centerPoint.y)>0 ) {
 		transform[0] = transform[3] = 0;
 		transform[1] = transform[2] = -1;
 	    } else {
@@ -61,19 +62,19 @@ void CVMouseMoveTransform(CharView *cv) {
 	    }
 	  } break;
 	  case cvt_scale: {
-	      transform[0] = 1.0+(cv->info.x-cv->p.cx)/(400*cv->scale);
-	      transform[3] = 1.0+(cv->info.y-cv->p.cy)/(400*cv->scale);
+	      transform[0] = 1.0+(cv->info.x-centerPoint.x)/(400*cv->scale);
+	      transform[3] = 1.0+(cv->info.y-centerPoint.y)/(400*cv->scale);
 	  } break;
 	  case cvt_skew: {
-	    real angle = atan2(cv->info.y-cv->p.cy,cv->info.x-cv->p.cx);
+	    real angle = atan2(cv->info.y-centerPoint.y,cv->info.x-centerPoint.x);
 	    transform[2] = sin(angle);
 	  } break;
 	  case cvt_3d_rotate: {
-	    real angle = atan2(cv->info.y-cv->p.cy,cv->info.x-cv->p.cx);
+	    real angle = atan2(cv->info.y-centerPoint.y,cv->info.x-centerPoint.x);
 /* Allow one pixel per degree */
-	    real zangle = sqrt( (cv->info.x-cv->p.cx)*(cv->info.x-cv->p.cx) +
-		    (cv->info.y-cv->p.cy)*(cv->info.y-cv->p.cy) ) * cv->scale *
-		    3.1415926535897932/180;
+	    real zangle = sqrt( (cv->info.x-centerPoint.x)*(cv->info.x-centerPoint.x) +
+		    (cv->info.y-centerPoint.y)*(cv->info.y-centerPoint.y) ) * cv->scale *
+		    M_PI/180;
 	    real s = sin(angle), c = cos(angle);
 	    real cz = cos(zangle);
 	    transform[0] = c*c + s*s*cz;
@@ -87,7 +88,7 @@ void CVMouseMoveTransform(CharView *cv) {
 /*	x' = cur.x + (cur.y - y)/cur.y * (x - cur.x)	*/
 /*  then rotate back					*/
 	  case cvt_perspective: {
-	    real angle = atan2(cv->p.cy,cv->p.cx);
+	    real angle = atan2(centerPoint.y,centerPoint.x);
 	    real s = sin(angle), c = cos(angle);
 	    transform[0] = transform[3] = c;
 	    transform[2] = -(transform[1] = -s);
@@ -101,19 +102,31 @@ void CVMouseMoveTransform(CharView *cv) {
 	  default:
 	  break;
 	}
-	    /* Make the pressed point be the center of the transformation */
+	    /* Make the point be the center of the transformation */
 	if ( cv->active_tool!=cvt_perspective ) {
-	    transform[4] = -cv->p.cx*transform[0] -
-			    cv->p.cy*transform[2] +
-			    cv->p.cx;
-	    transform[5] = -cv->p.cy*transform[3] -
-			    cv->p.cx*transform[1] +
-			    cv->p.cy;
+	    transform[4] = -centerPoint.x*transform[0] -
+			    centerPoint.y*transform[2] +
+			    centerPoint.x;
+	    transform[5] = -centerPoint.y*transform[3] -
+			    centerPoint.x*transform[1] +
+			    centerPoint.y;
 	}
 	CVSetCharChanged(cv,true);
 	CVTransFunc(cv,transform,false);
     }
     SCUpdateAll(cv->b.sc);
+}
+
+void CVMouseMoveTransform(CharView *cv) {
+    BasePoint centerPoint;
+
+    if ( cv->b.sc->parent->pivotPointSet && cv->b.sc->parent->pivotPointActive ) {
+	centerPoint = cv->b.sc->parent->pivotPoint;
+    } else {
+	centerPoint.x = cv->p.cx;
+	centerPoint.y = cv->p.cy;
+    }
+    CVTransform(cv,centerPoint);
 }
 
 void CVMouseUpTransform(CharView *cv) {

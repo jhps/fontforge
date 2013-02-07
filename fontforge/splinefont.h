@@ -1884,6 +1884,9 @@ typedef struct splinefont {
 	    /* ufo_descent is negative */
 
     struct sfundoes *undoes;
+    BasePoint pivotPoint;
+    int pivotPointSet;
+    int pivotPointActive;
 } SplineFont;
 
 struct axismap {
